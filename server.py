@@ -346,7 +346,7 @@ def personal_rank(j):
        3.5 if good and worldwide and mode in ('homeoffice','remote','freelance') else
        3 if good and eligible and mode=='hybrid' else
        2 if good and eligible and mode=='mk_local' else
-       1 if good and mode in ('homeoffice','remote','freelance') else 0)
+       0)
  return (tier,j['language_tier']>=2,j['language_tier'],j.get('balkan_language',False),j['fit'],str(j['date']))
 
 def refresh():
@@ -379,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j.get('relevant_role') and j.get('matching_language') and personal_rank(j)[0]>0]
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j.get('relevant_role') and j.get('matching_language') and j.get('location_confirmed') and personal_rank(j)[0]>=2]
    elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
