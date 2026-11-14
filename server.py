@@ -144,6 +144,24 @@ SPECIFIC_BAD=re.compile(r'(?:\b(?:engineer|architect|developer|programmer|softwa
 US_STATE=re.compile(r'\b(?:usa|united states|us only|u\.?s\.? residents|dallas|texas|seattle|washington|ohio|california|new york|florida|chicago|boston|japan|tokyo|france|paris|australia|singapore|canada|mexico|india|philippines)\b',re.I)
 LANGUAGE_OTHER=re.compile(r'(?:french|français|japanese|japonais|spanish|italian|portuguese|dutch|polish|arabic|mandarin).{0,30}(?:required|fluent|native|mandatory|c1|c2)',re.I)
 
+# Arbeitsmodell nur anhand ausdruecklicher Hinweise, nicht aufgrund der Branche.
+FREELANCE=re.compile(r'\b(?:freelanc(?:e|er|ing)|freiberuflich|freie mitarbeit|freier mitarbeiter|selbststaendig|selbstständig|independent contractor|contractor|projektauftrag|honorarvertrag|auf honorarbasis)\b',re.I)
+HOME_WORK=re.compile(r'\b(?:home[ -]?office|homeoffice|work[ -]?from[ -]?home|wfh|von zuhause|von zu hause|mobiles arbeiten|telework|telecommut|remote work|remote working|hybrid|teilweise homeoffice|homeoffice nach vereinbarung)\b',re.I)
+OFFICE_ONLY=re.compile(r'\b(?:on[ -]?site only|onsite only|only office work|office[ -]?based only|no remote|kein homeoffice|keine homeoffice.möglichkeit|ausschließlich vor ort|must work on.site)\b',re.I)
+
+def classify_work_model(title,location,description):
+ evidence=title+' '+location+' '+description[:2500]
+ if OFFICE_ONLY.search(evidence):return 'onsite'
+ # Ein Freelance-Vertrag allein ist nicht automatisch ortsunabhaengig.
+ remote_evidence=bool(REMOTE.search(evidence) or HOME_WORK.search(evidence))
+ freelance=bool(FREELANCE.search(title+' '+location+' '+description[:1600]))
+ if freelance and remote_evidence:return 'freelance'
+ if remote_evidence:
+  if re.search(r'\b(?:home[ -]?office|homeoffice|hybrid|mobiles arbeiten|von zuhause|von zu hause|work[ -]?from[ -]?home|wfh)\b',title+' '+location,re.I):return 'homeoffice'
+  return 'remote'
+ if freelance:return 'freelance_unconfirmed'
+ return 'unknown'
+
 def assess(j):
  title=j['title'];desc=j['description'];loc=j['location'];head=desc[:6000]
  full=title+' '+head
@@ -154,7 +172,8 @@ def assess(j):
  language_tier=3 if must else (2 if plus else (1 if mention else 0))
  balkan=bool(BALKAN_LANGUAGE.search(full))
  english=bool(ENGLISH.search(full));sales=bool(NEGATIVE.search(full));scam=bool(SCAM.search(full));shift=bool(SHIFT_BAD.search(full))
- remote=bool(REMOTE.search(title+' '+loc+' '+head[:2500]))
+ work_mode=classify_work_model(title,loc,head)
+ remote=work_mode in ('remote','homeoffice','freelance')
  jobfit=not bool(TITLE_BAD.search(title)) # All sectors welcome; specialized exclusions still apply
  technical=bool(SPECIFIC_BAD.search(title)) or bool(TECH_REQUIREMENT.search(title))
  allowed=bool(ALLOW.search(loc)) or bool(re.search(r'(?:work|remote|based|located|hire|employ).{0,45}(?:north macedonia|nordmazedonien|ohrid)',head,re.I))
@@ -194,14 +213,14 @@ def assess(j):
  if sales:notes.append('Kaltakquise/aktiver Vertrieb erwähnt')
  if shift:notes.append('Nacht-/Wochenendschichten erwähnt')
  if scam:notes.append('Mögliche Vorauszahlung/Gebühren')
- if not remote:notes.append('Homeoffice/Remote nicht nachgewiesen')
+ if not remote:notes.append('Remote/Homeoffice nicht nachgewiesen; Freelance allein garantiert keine Heimarbeit')
  if not jobfit:notes.append('Spezialberuf oder Tätigkeit außerhalb der bevorzugten Aufgaben')
  if technical:notes.append('Technische Spezialkenntnisse erforderlich oder wahrscheinlich')
  if not (TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)):notes.append('Andere Branche: Aufgaben in Originalanzeige prüfen')
  categories=[]
  for label,pattern in [('recruiting',r'recruit|talent acquisition|sourc|bewerber|personalreferent|personalwesen|\bhr\b'),('customer',r'kunden|customer support|customer service|call.?center|client support|backoffice|back.office|service agent'),('telecom',r'telekom|telecom|glasfaser|fiber|dsl|mobilfunk'),('travel',r'reise|travel|touris|booking|hotel|reservation'),('operations',r'operations|projekt|project|team.?lead|teamleiter|koordina|administration'),('ecommerce',r'amazon|e.?commerce|online.?handel|marketplace'),('language',r'translat|übersetz|dolmetsch|interpreter|lokalisier')]:
   if re.search(pattern,title,re.I):categories.append(label)
- work_mode='remote' if re.search(r'100\s*%\s*remote|fully remote|full remote|work from anywhere|remote',title+' '+loc,re.I) else ('homeoffice' if re.search(r'home.?office|homeoffice|hybrid',title+' '+loc+' '+head[:500],re.I) else 'unknown')
+ # Work mode is classified above from explicit evidence.
  return dict(j,fit=score,language='Deutsch ausdrücklich gefordert' if must else ('Deutsch erwünscht' if plus else ('Deutsch erwähnt' if mention else 'Deutsch nicht nachgewiesen')),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties,language_tier=language_tier,balkan_language=balkan,industries=categories,work_mode=work_mode,location_confirmed=allowed)
 
 def refresh():
@@ -234,10 +253,10 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1]
-   elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended']
-   elif show=='review':jobs=[j for j in jobs if j['category']=='review']
-   elif show=='possible':jobs=[j for j in jobs if j['category']=='possible']
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1 and j['work_mode'] in ('remote','homeoffice','freelance')]
+   elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance')]
+   elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance')]
+   elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance')]
    elif show=='excluded':jobs=[j for j in jobs if j['category']=='excluded']
    industries=set(q.get('industry',[]))
    if industries:jobs=[j for j in jobs if industries.intersection(j.get('industries',[]))]
