@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: balkan-remote-career-meister-7
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/status
+    autoDeployTrigger: commit
