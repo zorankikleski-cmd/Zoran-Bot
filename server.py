@@ -139,7 +139,7 @@ TASK_PATTERNS=[
 GERMAN_MUST=re.compile(r'(?:german[ -]speaking|german[ -]language|deutschsprachig|deutschkenntnisse|deutsche sprache|german fluency|fluent (?:in )?german|native (?:level )?german|german (?:required|mandatory|essential|speaker|c1|c2|b2)|deutsch (?:c1|c2|b2|erforderlich|fließend|muttersprache)|(?:german|deutsch).{0,30}(?:required|mandatory|essential|erforderlich|voraussetzung|c1|c2|b2))',re.I)
 GERMAN_PLUS=re.compile(r'(?:german|deutsch).{0,45}(?:preferred|nice to have|plus|advantage|von vorteil|wünschenswert)|(?:preferred|nice to have|plus|advantage|von vorteil|wünschenswert).{0,45}(?:german|deutsch)',re.I)
 BALKAN_LANGUAGE=re.compile(r'\b(?:macedonian|mazedonisch|serbian|serbisch|croatian|kroatisch|bosnian|bosnisch|bcs|bcs[ -]language|serbo[ -]croatian)\b',re.I)
-SERVICE_TITLE=re.compile(r'(?:customer|kunden|client|service|support|care|call[ -]?cent(?:er|re)|contact cent(?:er|re)|reise|travel|touris|booking|reserv|telecom|telekommun|mobilfunk|dsl|glasfaser|recruit|talent|personal|human resources|\bhr\b|teamlead|teamleiter|coordinator|koordinator|back[ -]?office|operations|projekt|project|interpreter|translator|dolmetsch|sprachmittl|amazon|logistics|logistik)',re.I)
+SERVICE_TITLE=re.compile(r'(?:first[ -]?level|second[ -]?level|1st[ -]?level|2nd[ -]?level|level[ -]?[12]|l[12][ -]?support|help[ -]?desk|service[ -]?desk|it[ -]?support)|(?:customer|kunden|client|service|support|care|call[ -]?cent(?:er|re)|contact cent(?:er|re)|reise|travel|touris|booking|reserv|telecom|telekommun|mobilfunk|dsl|glasfaser|recruit|talent|personal|human resources|\bhr\b|teamlead|teamleiter|coordinator|koordinator|back[ -]?office|operations|projekt|project|interpreter|translator|dolmetsch|sprachmittl|amazon|logistics|logistik)',re.I)
 SPECIFIC_BAD=re.compile(r'(?:\b(?:engineer|architect|developer|programmer|software|data scientist|machine learning|\bpython\b|\bsql\b|\bjava\b|\breact\b|\bcybersecurity\b|\bphysician\b|\bnurse\b|psycholog|psychologu|\bfrancophone\b|\(fr\)|\(jp\))\b)',re.I)
 US_STATE=re.compile(r'\b(?:usa|united states|us only|u\.?s\.? residents|dallas|texas|seattle|washington|ohio|california|new york|florida|chicago|boston|japan|tokyo|france|paris|australia|singapore|canada|mexico|india|philippines)\b',re.I)
 LANGUAGE_OTHER=re.compile(r'(?:french|français|japanese|japonais|spanish|italian|portuguese|dutch|polish|arabic|mandarin).{0,30}(?:required|fluent|native|mandatory|c1|c2)',re.I)
@@ -162,6 +162,9 @@ def classify_work_model(title,location,description):
  if freelance:return 'freelance_unconfirmed'
  return 'unknown'
 
+MK_LOCATION=re.compile(r'\b(?:north macedonia|nordmazedonien|north macedonian|macedonia|mazedonien|skopje|skopje|ohrid|bitola|bitola|tetovo|prilep|kumanovo|struga|gostivar|shtip|stip)\b',re.I)
+MK_REMOTE=re.compile(r'\\b(?:north macedonia|nordmazedonien|macedonia|mazedonien)\\b',re.I)
+
 def assess(j):
  title=j['title'];desc=j['description'];loc=j['location'];head=desc[:6000]
  full=title+' '+head
@@ -176,30 +179,33 @@ def assess(j):
  remote=work_mode in ('remote','homeoffice','freelance')
  jobfit=not bool(TITLE_BAD.search(title)) # All sectors welcome; specialized exclusions still apply
  technical=bool(SPECIFIC_BAD.search(title)) or bool(TECH_REQUIREMENT.search(title))
- allowed=bool(ALLOW.search(loc)) or bool(re.search(r'(?:work|remote|based|located|hire|employ).{0,45}(?:north macedonia|nordmazedonien|ohrid)',head,re.I))
+ mk_local=bool(MK_LOCATION.search(loc))
+ allowed=mk_local or bool(re.search(r'(?:work|remote|based|located|hire|employ|applicants from).{0,45}(?:north macedonia|nordmazedonien|macedonia|mazedonien|ohrid)',head,re.I))
  worldwide=bool(WORLD.search(loc)) or bool(re.search(r'(?:eligible|hiring|work|remote|location).{0,45}(?:worldwide|anywhere in the world|globally)',head[:1500],re.I))
  restricted=bool(EXCLUDE.search(loc)) or bool(EUROPE_ONLY.search(loc+' '+head[:1200]))
  # Location metadata is stronger than marketing text saying 'global company'.
  region=bool(REGION_LIMIT.search(loc) or COUNTRY_SCOPE.search(loc) or US_STATE.search(loc)) and not allowed and not worldwide
- excluded_location=restricted or region
- ohrid='ausgeschlossen' if excluded_location else ('Nordmazedonien genannt, Freigabe prüfen' if allowed else ('Weltweit ausgeschrieben, Freigabe prüfen' if worldwide else 'ungeklärt'))
- score=10+(18 if bool(TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)) else 8)+(35 if must else (24 if plus else (10 if mention else 0)))+(8 if balkan else 0)+(10 if remote else 0)+(8 if allowed else (4 if worldwide else 0))
+ excluded_location=(restricted or region) and not mk_local
+ ohrid='ausgeschlossen' if excluded_location else ('Arbeitsort Nordmazedonien' if mk_local else ('Nordmazedonien erwähnt, Beschäftigung prüfen' if allowed else ('Weltweit ausgeschrieben, Beschäftigung prüfen' if worldwide else 'ungeklärt')))
+ score=10+(35 if bool(TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)) else 0)+(35 if must else (24 if plus else (10 if mention else 0)))+(8 if balkan else 0)+(10 if remote else 0)+(8 if allowed else (4 if worldwide else 0))
  if english:score-=16
  if sales:score-=30
  if shift:score-=15
- if not remote:score-=30
+ if not remote and not mk_local:score-=30
  if not jobfit:score-=35
  if technical:score-=40
  if excluded_location:score=min(score,10)
+ if not (allowed or worldwide):score=min(score,55) # Standort ungeklärt: kein Spitzenwert
+ if not (TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)):score=min(score,40) # Andere Berufe nicht vor relevante Support/HR-Jobs
  if not language_tier:score=min(score,25)
  score=max(0,min(99,score))
- excluded=excluded_location or sales or scam or shift or not jobfit or not remote or technical or (bool(LANGUAGE_OTHER.search(full)) and not mention)
+ excluded=excluded_location or sales or scam or shift or not jobfit or (not remote and not mk_local) or technical or (bool(LANGUAGE_OTHER.search(full)) and not mention)
  if excluded:category='excluded'
- elif must and (allowed or worldwide):category='recommended'
+ elif must and (mk_local or allowed or worldwide):category='recommended'
  elif must or plus or mention:category='review'
  else:category='possible'
- status={'recommended':'Deutsch ausdrücklich gesucht · Ohrid-Vertrag prüfen',
-         'review':'Deutsch in Anzeige erkannt · Ohrid noch klären',
+ status={'recommended':'Deutsch ausdrücklich gesucht · Arbeitsort und Vertrag prüfen',
+         'review':'Deutsch in Anzeige erkannt · Arbeitsort prüfen',
          'possible':'Sprache nicht belegt · nur als Reserve prüfen',
          'excluded':'Nicht für deine normale Suche empfohlen'}[category]
  duties=next((text for pattern,text in TASK_PATTERNS if re.search(pattern,title,re.I)),
@@ -213,15 +219,15 @@ def assess(j):
  if sales:notes.append('Kaltakquise/aktiver Vertrieb erwähnt')
  if shift:notes.append('Nacht-/Wochenendschichten erwähnt')
  if scam:notes.append('Mögliche Vorauszahlung/Gebühren')
- if not remote:notes.append('Remote/Homeoffice nicht nachgewiesen; Freelance allein garantiert keine Heimarbeit')
+ if not remote:notes.append('Kein Remote/Homeoffice-Nachweis; bei Stellen in Nordmazedonien Arbeitsort vor Ort prüfen')
  if not jobfit:notes.append('Spezialberuf oder Tätigkeit außerhalb der bevorzugten Aufgaben')
  if technical:notes.append('Technische Spezialkenntnisse erforderlich oder wahrscheinlich')
  if not (TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)):notes.append('Andere Branche: Aufgaben in Originalanzeige prüfen')
  categories=[]
- for label,pattern in [('recruiting',r'recruit|talent acquisition|sourc|bewerber|personalreferent|personalwesen|\bhr\b'),('customer',r'kunden|customer support|customer service|call.?center|client support|backoffice|back.office|service agent'),('telecom',r'telekom|telecom|glasfaser|fiber|dsl|mobilfunk'),('travel',r'reise|travel|touris|booking|hotel|reservation'),('operations',r'operations|projekt|project|team.?lead|teamleiter|koordina|administration'),('ecommerce',r'amazon|e.?commerce|online.?handel|marketplace'),('language',r'translat|übersetz|dolmetsch|interpreter|lokalisier')]:
+ for label,pattern in [('recruiting',r'recruit|talent acquisition|sourc|bewerber|personalreferent|personalwesen|\bhr\b'),('customer',r'kunden|customer support|customer service|call.?center|client support|backoffice|back.office|service agent|first.?level|second.?level|1st.?level|2nd.?level|level.?[12]|help.?desk|service.?desk|it.?support'),('telecom',r'telekom|telecom|glasfaser|fiber|dsl|mobilfunk'),('travel',r'reise|travel|touris|booking|hotel|reservation'),('operations',r'operations|projekt|project|team.?lead|teamleiter|koordina|administration'),('ecommerce',r'amazon|e.?commerce|online.?handel|marketplace'),('language',r'translat|übersetz|dolmetsch|interpreter|lokalisier')]:
   if re.search(pattern,title,re.I):categories.append(label)
  # Work mode is classified above from explicit evidence.
- return dict(j,fit=score,language='Deutsch ausdrücklich gefordert' if must else ('Deutsch erwünscht' if plus else ('Deutsch erwähnt' if mention else 'Deutsch nicht nachgewiesen')),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties,language_tier=language_tier,balkan_language=balkan,industries=categories,work_mode=work_mode,location_confirmed=allowed)
+ return dict(j,fit=score,language='Deutsch ausdrücklich gefordert' if must else ('Deutsch erwünscht' if plus else ('Deutsch erwähnt' if mention else 'Deutsch nicht nachgewiesen')),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties,language_tier=language_tier,balkan_language=balkan,industries=categories,work_mode=('mk_local' if mk_local and not remote else work_mode),location_confirmed=allowed,mk_local=mk_local)
 
 def refresh():
  sources={};alljobs=[]
@@ -253,10 +259,10 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1 and j['work_mode'] in ('remote','homeoffice','freelance')]
-   elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance')]
-   elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance')]
-   elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance')]
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1 and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
+   elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
+   elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
+   elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='excluded':jobs=[j for j in jobs if j['category']=='excluded']
    industries=set(q.get('industry',[]))
    if industries:jobs=[j for j in jobs if industries.intersection(j.get('industries',[]))]
@@ -270,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
    location=q.get('location',['any'])[0]
    if location=='confirmed':jobs=[j for j in jobs if j.get('location_confirmed') and j['ohrid']!='ausgeschlossen']
    elif location=='not_excluded':jobs=[j for j in jobs if j['ohrid']!='ausgeschlossen']
-   jobs.sort(key=lambda j:(j['language_tier'],bool(j.get('location_confirmed')),j['fit'],j['date']),reverse=True)
+   jobs.sort(key=lambda j:(not j['excluded'], j['language_tier']>=2, j['language_tier'], bool(j.get('mk_local') or j.get('location_confirmed')), bool(TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title'])), j['work_mode'] in ('remote','homeoffice','freelance'),j['fit'],j['date']),reverse=True)
    page=max(1,min(10000,int(q.get('page',['1'])[0]) if q.get('page',['1'])[0].isdigit() else 1));size=25
    self.respond({'jobs':jobs[(page-1)*size:page*size],'count':len(jobs),'page':page,'pages':max(1,(len(jobs)+size-1)//size),'sources':sources,'last_sync':at});return
   self.respond({'error':'not found'},404)
