@@ -27,7 +27,7 @@ GERMAN=re.compile(r'\b(?:german|deutsch|deutschsprachig|german.speaking)\b',re.I
 EXCLUDE=re.compile(r'\b(?:eu residents only|eu only|european union only|eea only|germany only|must reside in germany|based in germany|within germany only|us only|usa only|united states only|uk only|must be located in the uk|dach only|eu/eea only)\b',re.I)
 ALLOW=re.compile(r'\b(?:north macedonia|nordmazedonien|macedonia|ohrid)\b',re.I)
 WORLD=re.compile(r'\b(?:worldwide|anywhere in the world|globally remote|work from anywhere|global remote)\b',re.I)
-REMOTE=re.compile(r'\b(?:remote|home.office|work from home|fully distributed|telework)\b',re.I)
+REMOTE=re.compile(r'\b(?:remote|home[ -]?office|homeoffice|work[ -]?from[ -]?home|wfh|fully distributed|telework|telecommut|100\s*%\s*(?:remote|homeoffice)|ortsunabhängig|von zuhause|von zu hause|mobiles arbeiten|distributed team|anywhere)\b',re.I)
 TITLES={'recruit':'Bewerber finden, Lebensläufe prüfen, Gespräche führen und Einstellungen begleiten.','talent':'Bewerber suchen, Gespräche organisieren und Personalentscheidungen unterstützen.','hr':'Personalunterlagen pflegen, Mitarbeitende betreuen und HR-Prozesse koordinieren.','customer support':'Kundenfragen beantworten, Probleme lösen und Vorgänge dokumentieren.','customer success':'Bestandskunden betreuen, Probleme koordinieren und die Nutzung von Dienstleistungen verbessern.','project':'Aufgaben, Termine und beteiligte Teams koordinieren und den Projektfortschritt verfolgen.','operations':'Abläufe organisieren, Kennzahlen prüfen und Teams bei der täglichen Arbeit unterstützen.','telecom':'Telekommunikationsprojekte, Kunden oder Partner koordinieren.','fiber':'Glasfaserprojekte und beteiligte Dienstleister koordinieren.','translator':'Gespräche oder Texte zwischen Sprachen übertragen.','interpreter':'Gespräche und Meetings mündlich übersetzen.','training':'Mitarbeitende einarbeiten, Schulungen durchführen und Lernfortschritte begleiten.'}
 def clean(x):
  if not isinstance(x,str):return ''
@@ -89,49 +89,72 @@ def fetch_source(name):
     jobs.append(row(name,x.get('title'),company,x.get('description'),loc,x.get('applicationLink'),sal,x.get('pubDate') or x.get('publishedAt'),x.get('guid')))
  return [j for j in jobs if j]
 # Conservative classification: unknown is not an approval. Check location metadata first.
-TITLE_GOOD=re.compile(r'recruit|talent acquisition|sourc|personnel|personalreferent|\bhr\b|human resources|onboarding|telecom|telekommun|fiber|fibre|glasfaser|project coord|projektkoord|rollout|customer success|customer support|kundenbetreuung|kundenservice|operations|team lead|teamleiter|training|quality|administration|back.office|backoffice|translat|interpret|dolmetsch|sprachmittl|macedonian|balkan|property|tourism',re.I)
-TITLE_BAD=re.compile(r'\b(?:software engineer|developer|devops|data scientist|machine learning engineer|nurse|physician|account executive|sales development representative|business development representative|sales manager|sales representative|growth marketer|graphic designer|product designer)\b',re.I)
-REGION_LIMIT=re.compile(r'\b(?:apj|apac|emea|latam|north america|south america|australia|singapore|mexico|united states|\busa\b|\buk\b|canada|india|philippines|germany|deutschland|austria|österreich|switzerland|schweiz|europe|eu|eea)\b',re.I)
+# Job suitability must come from the JOB TITLE, never a substring of a company name.
+TITLE_GOOD=re.compile(r'\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent sourc(?:er|ing)|personnel|personal(?:wesen|referent|betreuung|administration|management)|hr|human resources|people operations|onboarding|telecom(?:munications)?|telekommunikation|fiber|fibre|glasfaser|dsl|mobilfunk|project coordinator|project manager|projekt(?:leitung|koordination|manager|management)|rollout|customer success|customer support|customer service|kunden(?:betreuung|service|beratung)|client support|operations|team(?:lead|leiter|leitung)|training|quality assurance|qualitätsmanagement|administration|back[ -]?office|office manager|translat(?:or|ion)|interpret(?:er|ation)|dolmetscher|sprachmittler|macedonian|balkan|property manager|immobilien|touris(?:m|mus)|travel coordinator|service coordinator|support specialist|customer care|account support)\b',re.I)
+TITLE_BAD=re.compile(r'\b(?:software engineer|software developer|developer|devops|data scientist|machine learning engineer|nurse|physician|account executive|sales development representative|business development representative|sales manager|sales representative|growth marketer|graphic designer|product designer|warehouse|forklift|staplerfahrer|lagerlogistik|lagerarbeiter|fahrer|driver|mechanic|mechaniker|electrician|elektriker|koch|chef de partie|waiter|security guard)\b',re.I)
+# Geographic exclusions apply to advertised work locations, not to incidental country names in the description.
+REGION_LIMIT=re.compile(r'\b(?:apj|apac|latam|north america|south america|australia|singapore|mexico|united states|usa|canada|india|philippines|germany|deutschland|austria|österreich|switzerland|schweiz|uk|united kingdom)\b',re.I)
+EUROPE_ONLY=re.compile(r'\b(?:eu only|eu residents only|europe only|european union only|eea only|must be (?:based|located|resident) in (?:the )?(?:eu|europe|germany|uk|us)|(?:us|uk|germany|australia|singapore|mexico) only)\b',re.I)
 GERMAN_REQUIRED=re.compile(r'(?:fluent|native|proficient|excellent|business.level|c1|c2|b2|must speak|required|mandatory).{0,35}\bgerman\b|\bgerman\b.{0,35}(?:required|mandatory|fluent|native|c1|c2|b2)|\bdeutsch\b.{0,35}(?:erforderlich|pflicht|muttersprache|fließend|c1|c2|b2)|(?:deutschsprachig|german.speaking)',re.I)
-EUROPE_ONLY=re.compile(r'\b(?:eu only|eu residents only|europe only|european union only|eea only|must be (?:based|located|resident) in (?:the )?(?:eu|europe|germany|uk|us)|\b(?:us|uk|germany|australia|singapore|mexico) only\b)\b',re.I)
 SHIFT_BAD=re.compile(r'\b(?:night shifts?|overnight shifts?|weekend shifts?|rotating shifts?|nachtschicht|wochenendschicht)\b',re.I)
+TASK_PATTERNS=[
+ (r'recruit|talent|sourc|personal|\bhr\b|human resources|people operations', 'Bewerber suchen und ansprechen, Lebensläufe sichten, Interviews koordinieren und die Einstellung begleiten.'),
+ (r'glasfaser|fiber|fibre|telecom|telekommun|dsl|mobilfunk|rollout','Kunden, Techniker und Dienstleister koordinieren, Aufträge nachverfolgen und technische Vorgänge dokumentieren.'),
+ (r'projekt|project|coordinator|operations','Termine und Aufgaben abstimmen, Teams koordinieren, Fortschritte dokumentieren und Probleme lösen.'),
+ (r'customer|kunden|support|service|client|account support','Deutschsprachige Kundenanfragen bearbeiten, Lösungen erklären und Vorgänge im System dokumentieren.'),
+ (r'team lead|teamleiter|teamleitung|management','Mitarbeitende unterstützen, Aufgaben verteilen, Qualität prüfen und Arbeitsabläufe verbessern.'),
+ (r'translat|interpret|dolmetsch|sprachmittl','Gespräche oder Dokumente zwischen den geforderten Sprachen übersetzen.'),
+ (r'immobil|property','Kunden und Objekte betreuen, Termine organisieren und Anfragen bearbeiten.'),
+ (r'touris|travel','Reiseanfragen bearbeiten, Buchungen und Abläufe koordinieren und Kunden betreuen.'),
+]
 def assess(j):
- title=j['title'];desc=j['description'];loc=j['location'];head=desc[:5000];full=title+' '+head; lowtitle=title.lower()
- german=bool(GERMAN.search(full));german_required=bool(GERMAN_REQUIRED.search(full));english=bool(ENGLISH.search(full));sales=bool(NEGATIVE.search(full)) or bool(re.search(r'\b(?:cold calling|outbound sales|commission.only|kaltakquise)\b',full,re.I));scam=bool(SCAM.search(full));shift=bool(SHIFT_BAD.search(full));remote=bool(REMOTE.search(title+' '+loc+' '+head[:700]));jobfit=bool(TITLE_GOOD.search(title)) and not bool(TITLE_BAD.search(title));
- # A country name in a description is not a work-location approval.
+ title=j['title'];desc=j['description'];loc=j['location'];head=desc[:5000]
+ full=title+' '+head
+ german=bool(GERMAN.search(full));german_required=bool(GERMAN_REQUIRED.search(full))
+ english=bool(ENGLISH.search(full));sales=bool(NEGATIVE.search(full));scam=bool(SCAM.search(full));shift=bool(SHIFT_BAD.search(full))
+ # A remote job board alone is not evidence that every job is remote.
+ remote=bool(REMOTE.search(title+' '+loc+' '+head[:1200]))
+ jobfit=bool(TITLE_GOOD.search(title)) and not bool(TITLE_BAD.search(title))
  allowed=bool(ALLOW.search(loc)) or bool(re.search(r'(?:work|remote|based|located|hire|employ).{0,45}(?:north macedonia|nordmazedonien|ohrid)',head,re.I))
  worldwide=bool(WORLD.search(loc)) or bool(re.search(r'(?:eligible|hiring|work|remote|location).{0,45}(?:worldwide|anywhere in the world|globally)',head[:1500],re.I))
- restricted=bool(EXCLUDE.search(loc+' '+head[:1200])) or bool(EUROPE_ONLY.search(loc+' '+head[:1200]))
- # Geographic restrictions in the location field override generic "remote" descriptions.
+ restricted=bool(EXCLUDE.search(loc+' '+head[:1500])) or bool(EUROPE_ONLY.search(loc+' '+head[:1500]))
  region=bool(REGION_LIMIT.search(loc)) and not allowed and not worldwide
  excluded_location=restricted or region
- ohrid='ausgeschlossen' if excluded_location else ('Nordmazedonien genannt, Arbeitgeberfreigabe prüfen' if allowed else ('Weltweit ausgeschrieben, Vertragsfreigabe prüfen' if worldwide else 'ungeklärt'))
- # Scores only reflect evidence, not a probability. Never award 70% for title alone.
- score=8+(27 if jobfit else 0)+(27 if german_required else (14 if german else 0))+(12 if remote else 0)+(16 if allowed else (8 if worldwide else 0))
- if english:score-=18
- if sales:score-=30
- if shift:score-=15
- if not remote:score-=15
- if not jobfit:score-=20
- if excluded_location:score=min(score,12)
- if not german:score=min(score,44)
- if not allowed and not worldwide:score=min(score,59)
+ ohrid='ausgeschlossen' if excluded_location else ('Nordmazedonien genannt, Freigabe prüfen' if allowed else ('Weltweit ausgeschrieben, Freigabe prüfen' if worldwide else 'ungeklärt'))
+ # Evidence-based ranking, not an application-success probability.
+ score=10+(27 if jobfit else 0)+(23 if german_required else (14 if german else 0))+(15 if remote else 0)+(15 if allowed else (9 if worldwide else 0))
+ if english:score-=14
+ if sales:score-=28
+ if shift:score-=12
+ if not remote:score-=22
+ if not jobfit:score-=35
+ if excluded_location:score=min(score,10)
+ if not german:score=min(score,48)
  score=max(0,min(95,score))
- # Strong recommendations need explicit language and country eligibility, not guesses.
- eligible=jobfit and remote and german and (allowed or worldwide) and not (excluded_location or sales or scam or shift or english)
- status='Passender Kandidat, Arbeitsort rechtlich prüfen' if eligible else ('Nicht geeignet / Standort ausgeschlossen' if excluded_location else 'Prüfen: wichtige Anforderungen unbestätigt')
- duties=next((v for k,v in TITLES.items() if k in lowtitle),'Die genauen täglichen Aufgaben lassen sich aus den verfügbaren Angaben nicht zuverlässig ableiten. Bitte Originalanzeige öffnen.')
+ excluded=excluded_location or sales or scam or shift or not jobfit or not remote
+ # Three useful groups: confirmed geography, strong potential, and language still to check.
+ if excluded:category='excluded'
+ elif german and (allowed or worldwide):category='recommended'
+ elif german:category='review'
+ else:category='possible'
+ status={'recommended':'Fachlich passend · Standortfreigabe vor Bewerbung bestätigen',
+         'review':'Interessant · Homeoffice aus Ohrid beim Arbeitgeber klären',
+         'possible':'Möglicherweise interessant · Deutsch und Ohrid klären',
+         'excluded':'Nicht für deine normale Suche empfohlen'}[category]
+ duties=next((text for pattern,text in TASK_PATTERNS if re.search(pattern,title,re.I)),
+             'Die täglichen Aufgaben sind aus dem Stellentitel nicht zuverlässig ableitbar. Bitte die Originalanzeige prüfen.')
  notes=[]
- if not german:notes.append('Deutsch nicht nachgewiesen: keine Empfehlung')
- if english:notes.append('Berufliches Englisch verlangt')
- if not allowed and not worldwide:notes.append('Beschäftigung aus Nordmazedonien nicht bestätigt')
- if excluded_location:notes.append('Stellenregion widerspricht dem gewünschten Arbeitsort')
- if sales:notes.append('Aktiver Vertrieb/Kaltakquise erwähnt')
+ if not german:notes.append('Deutsch nicht nachgewiesen')
+ if english:notes.append('Gute Englischkenntnisse verlangt, bitte prüfen')
+ if not allowed:notes.append('Beschäftigung aus Nordmazedonien nicht bestätigt')
+ if excluded_location:notes.append('Ausgeschriebene Region passt nicht zu Ohrid')
+ if sales:notes.append('Kaltakquise/aktiver Vertrieb erwähnt')
  if shift:notes.append('Nacht-/Wochenendschichten erwähnt')
- if scam:notes.append('Warnsignal: mögliche Gebühren/Vorauszahlung')
- if not remote:notes.append('Remote-Arbeit nicht nachgewiesen')
- if not jobfit:notes.append('Berufsprofil passt nicht ausreichend')
- return dict(j,fit=score,language='Deutsch gefordert' if german_required else ('Deutsch erwähnt, Pflicht unklar' if german else 'Deutsch nicht nachgewiesen'),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=not eligible,category='recommended' if eligible else ('excluded' if excluded_location or sales or scam or shift or not jobfit else 'review'),status=status,notes=notes,duties=duties)
+ if scam:notes.append('Mögliche Vorauszahlung/Gebühren')
+ if not remote:notes.append('Homeoffice/Remote nicht nachgewiesen')
+ if not jobfit:notes.append('Berufsprofil passt nicht')
+ return dict(j,fit=score,language='Deutsch gefordert' if german_required else ('Deutsch erwähnt' if german else 'Deutsch nicht nachgewiesen'),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties)
+
 def refresh():
  sources={};alljobs=[]
  with ThreadPoolExecutor(max_workers=6) as pool:
@@ -146,7 +169,7 @@ def refresh():
   key=(j['company'].lower().strip(),j['title'].lower().strip(),j['location'].lower().strip())
   if key in seen:continue
   seen.add(key);unique.append(assess(j))
- unique.sort(key=lambda j:(j['category']=='recommended',j['category']=='review',j['fit']),reverse=True)
+ unique.sort(key=lambda j:({'recommended':3,'review':2,'possible':1,'excluded':0}[j['category']],j['fit']),reverse=True)
  with LOCK:CACHE.update(at=time.time(),jobs=unique,sources=sources)
  return len(unique)
 class Handler(BaseHTTPRequestHandler):
@@ -155,15 +178,17 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   p=urllib.parse.urlsplit(self.path);q=urllib.parse.parse_qs(p.query)
   if p.path=='/':
-   b=(BASE/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b);return
+   b=(BASE/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store, max-age=0');self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b);return
   if p.path=='/api/status':
    with LOCK:self.respond({'last_sync':CACHE['at'],'sources':CACHE['sources'],'total':len(CACHE['jobs']),'configured_sources':SOURCE_NAMES});return
   if p.path=='/api/jobs':
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if j['category']=='recommended']
+   if show=='recommended':jobs=[j for j in jobs if j['category']!='excluded']
+   elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended']
    elif show=='review':jobs=[j for j in jobs if j['category']=='review']
+   elif show=='possible':jobs=[j for j in jobs if j['category']=='possible']
    elif show=='excluded':jobs=[j for j in jobs if j['category']=='excluded']
    page=max(1,min(10000,int(q.get('page',['1'])[0]) if q.get('page',['1'])[0].isdigit() else 1));size=25
    self.respond({'jobs':jobs[(page-1)*size:page*size],'count':len(jobs),'page':page,'pages':max(1,(len(jobs)+size-1)//size),'sources':sources,'last_sync':at});return
