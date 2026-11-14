@@ -91,7 +91,12 @@ def fetch_source(name):
 # Conservative classification: unknown is not an approval. Check location metadata first.
 # Job suitability must come from the JOB TITLE, never a substring of a company name.
 TITLE_GOOD=re.compile(r'\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent sourc(?:er|ing)|personnel|personal(?:wesen|referent|betreuung|administration|management)|hr|human resources|people operations|onboarding|telecom(?:munications)?|telekommunikation|fiber|fibre|glasfaser|dsl|mobilfunk|project coordinator|project manager|projekt(?:leitung|koordination|manager|management)|rollout|customer success|customer support|customer service|kunden(?:betreuung|service|beratung)|client support|operations|team(?:lead|leiter|leitung)|training|quality assurance|qualitätsmanagement|administration|back[ -]?office|office manager|translat(?:or|ion)|interpret(?:er|ation)|dolmetscher|sprachmittler|macedonian|balkan|property manager|immobilien|touris(?:m|mus)|travel coordinator|service coordinator|support specialist|customer care|account support)\b',re.I)
-TITLE_BAD=re.compile(r'\b(?:software engineer|software developer|developer|devops|data scientist|machine learning engineer|nurse|physician|account executive|sales development representative|business development representative|sales manager|sales representative|growth marketer|graphic designer|product designer|warehouse|forklift|staplerfahrer|lagerlogistik|lagerarbeiter|fahrer|driver|mechanic|mechaniker|electrician|elektriker|koch|chef de partie|waiter|security guard)\b',re.I)
+TITLE_BAD=re.compile(r'\b(?:software engineer|software developer|developer|devops|data scientist|machine learning|data engineer|solutions? architect|cloud architect|customer success (?:engineer|architect)|technical support engineer|support engineer|python developer|python engineer|operations (?:engineer|expert with python)|nurse|physician|account executive|sales development representative|business development representative|sales manager|sales representative|growth marketer|graphic designer|product designer|warehouse|forklift|staplerfahrer|lagerlogistik|lagerarbeiter|fahrer|driver|mechanic|mechaniker|electrician|elektriker|koch|chef de partie|waiter|security guard)\b',re.I)
+# High-skill technical requirements are a poor match even when the title is broad.
+TECH_REQUIREMENT=re.compile(r'\b(?:python|javascript|typescript|kubernetes|terraform|aws|azure|sql|api integration|software development|programming|coding)\b',re.I)
+# Explicitly country-scoped listings must not be mistaken for location-flexible remote work.
+COUNTRY_SCOPE=re.compile(r'\b(?:japan|france|frankreich|japon|japan only|paris|tokyo|poland|polen|spain|spanien|portugal|italy|italien|netherlands|niederlande|belgium|belgien|sweden|schweden|denmark|dänemark|norway|norwegen|ireland|irland|brazil|brasilien|argentina|colombia|kolumbien|south africa|südafrika)\b',re.I)
+
 # Geographic exclusions apply to advertised work locations, not to incidental country names in the description.
 REGION_LIMIT=re.compile(r'\b(?:apj|apac|latam|north america|south america|australia|singapore|mexico|united states|usa|canada|india|philippines|germany|deutschland|austria|österreich|switzerland|schweiz|uk|united kingdom)\b',re.I)
 EUROPE_ONLY=re.compile(r'\b(?:eu only|eu residents only|europe only|european union only|eea only|must be (?:based|located|resident) in (?:the )?(?:eu|europe|germany|uk|us)|(?:us|uk|germany|australia|singapore|mexico) only)\b',re.I)
@@ -101,7 +106,7 @@ TASK_PATTERNS=[
  (r'recruit|talent|sourc|personal|\bhr\b|human resources|people operations', 'Bewerber suchen und ansprechen, Lebensläufe sichten, Interviews koordinieren und die Einstellung begleiten.'),
  (r'glasfaser|fiber|fibre|telecom|telekommun|dsl|mobilfunk|rollout','Kunden, Techniker und Dienstleister koordinieren, Aufträge nachverfolgen und technische Vorgänge dokumentieren.'),
  (r'projekt|project|coordinator|operations','Termine und Aufgaben abstimmen, Teams koordinieren, Fortschritte dokumentieren und Probleme lösen.'),
- (r'customer|kunden|support|service|client|account support','Deutschsprachige Kundenanfragen bearbeiten, Lösungen erklären und Vorgänge im System dokumentieren.'),
+ (r'customer|kunden|support|service|client|account support','Kundenanfragen bearbeiten, Lösungen erklären und Vorgänge im System dokumentieren. Die benötigte Sprache bitte in der Anzeige prüfen.'),
  (r'team lead|teamleiter|teamleitung|management','Mitarbeitende unterstützen, Aufgaben verteilen, Qualität prüfen und Arbeitsabläufe verbessern.'),
  (r'translat|interpret|dolmetsch|sprachmittl','Gespräche oder Dokumente zwischen den geforderten Sprachen übersetzen.'),
  (r'immobil|property','Kunden und Objekte betreuen, Termine organisieren und Anfragen bearbeiten.'),
@@ -115,10 +120,11 @@ def assess(j):
  # A remote job board alone is not evidence that every job is remote.
  remote=bool(REMOTE.search(title+' '+loc+' '+head[:1200]))
  jobfit=bool(TITLE_GOOD.search(title)) and not bool(TITLE_BAD.search(title))
+ technical=bool(TECH_REQUIREMENT.search(title)) or (bool(re.search(r'\b(?:engineer|architect|developer|data|technical)\b',title,re.I)) and bool(TECH_REQUIREMENT.search(head)))
  allowed=bool(ALLOW.search(loc)) or bool(re.search(r'(?:work|remote|based|located|hire|employ).{0,45}(?:north macedonia|nordmazedonien|ohrid)',head,re.I))
  worldwide=bool(WORLD.search(loc)) or bool(re.search(r'(?:eligible|hiring|work|remote|location).{0,45}(?:worldwide|anywhere in the world|globally)',head[:1500],re.I))
  restricted=bool(EXCLUDE.search(loc+' '+head[:1500])) or bool(EUROPE_ONLY.search(loc+' '+head[:1500]))
- region=bool(REGION_LIMIT.search(loc)) and not allowed and not worldwide
+ region=bool(REGION_LIMIT.search(loc) or COUNTRY_SCOPE.search(loc)) and not allowed and not worldwide
  excluded_location=restricted or region
  ohrid='ausgeschlossen' if excluded_location else ('Nordmazedonien genannt, Freigabe prüfen' if allowed else ('Weltweit ausgeschrieben, Freigabe prüfen' if worldwide else 'ungeklärt'))
  # Evidence-based ranking, not an application-success probability.
@@ -128,10 +134,12 @@ def assess(j):
  if shift:score-=12
  if not remote:score-=22
  if not jobfit:score-=35
+ if technical:score-=28
  if excluded_location:score=min(score,10)
- if not german:score=min(score,48)
+ if not german:score=min(score,35)
+ if technical:score=min(score,15)
  score=max(0,min(95,score))
- excluded=excluded_location or sales or scam or shift or not jobfit or not remote
+ excluded=excluded_location or sales or scam or shift or not jobfit or not remote or technical
  # Three useful groups: confirmed geography, strong potential, and language still to check.
  if excluded:category='excluded'
  elif german and (allowed or worldwide):category='recommended'
@@ -139,7 +147,7 @@ def assess(j):
  else:category='possible'
  status={'recommended':'Fachlich passend · Standortfreigabe vor Bewerbung bestätigen',
          'review':'Interessant · Homeoffice aus Ohrid beim Arbeitgeber klären',
-         'possible':'Möglicherweise interessant · Deutsch und Ohrid klären',
+         'possible':'Nur zur weiteren Prüfung · Deutsch und Ohrid nicht bestätigt',
          'excluded':'Nicht für deine normale Suche empfohlen'}[category]
  duties=next((text for pattern,text in TASK_PATTERNS if re.search(pattern,title,re.I)),
              'Die täglichen Aufgaben sind aus dem Stellentitel nicht zuverlässig ableitbar. Bitte die Originalanzeige prüfen.')
@@ -153,6 +161,7 @@ def assess(j):
  if scam:notes.append('Mögliche Vorauszahlung/Gebühren')
  if not remote:notes.append('Homeoffice/Remote nicht nachgewiesen')
  if not jobfit:notes.append('Berufsprofil passt nicht')
+ if technical:notes.append('Technische Spezialkenntnisse erforderlich oder wahrscheinlich')
  return dict(j,fit=score,language='Deutsch gefordert' if german_required else ('Deutsch erwähnt' if german else 'Deutsch nicht nachgewiesen'),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties)
 
 def refresh():
