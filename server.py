@@ -22,9 +22,27 @@ ATS_BOARDS={
  'Greenhouse · N26':('greenhouse','n26','N26'),
  'Greenhouse · Miro':('greenhouse','miro','Miro'),
  'Greenhouse · HelloFresh':('greenhouse','hellofresh','HelloFresh'),
+ 'Greenhouse · SupportYourApp':('greenhouse','supportyourapp','SupportYourApp'),
+ 'Greenhouse · Customer.io':('greenhouse','customerio','Customer.io'),
+ 'Greenhouse · Kraken':('greenhouse','kraken','Kraken'),
+ 'Greenhouse · Grafana Labs':('greenhouse','grafanalabs','Grafana Labs'),
+ 'Greenhouse · Mozilla':('greenhouse','mozilla','Mozilla'),
+ 'Greenhouse · Elastic':('greenhouse','elastic','Elastic'),
+ 'Greenhouse · Doist':('greenhouse','doist','Doist'),
+ 'Greenhouse · HubSpot':('greenhouse','hubspot','HubSpot'),
+ 'Greenhouse · Vercel':('greenhouse','vercel','Vercel'),
+ 'Greenhouse · Wise':('greenhouse','wise','Wise'),
+ 'Greenhouse · Revolut':('greenhouse','revolut','Revolut'),
+ 'Greenhouse · Toptal':('greenhouse','toptal','Toptal'),
+ 'Greenhouse · GoDaddy':('greenhouse','godaddy','GoDaddy'),
+ 'Lever · Aircall':('lever','aircall','Aircall'),
+ 'Lever · Binance':('lever','binance','Binance'),
+ 'Lever · Bitpanda':('lever','bitpanda','Bitpanda'),
+ 'Ashby · Remote':('ashby','remote','Remote'),
  'Lever · Remote.com':('lever','remote','Remote.com'),
 }
-SOURCE_NAMES=['Remotive','Remotive · German','Remotive · Customer Support','Remotive · Recruiting','Remotive · Balkan','Remotive · Travel','Remotive · Translator','Remotive · German Support','Remotive · German HR','Remotive · German Telecom','Remotive · German Freelance','Remotive · Croatian','Remotive · Serbian','Remotive · Bosnian','Remotive · Macedonian','Remotive · German Homeoffice','We Work Remotely · RSS','Arbeitnow','Jobicy','Remote OK','Himalayas',*ATS_BOARDS]
+SOURCE_NAMES=['Remotive','We Work Remotely · RSS','Arbeitnow','Jobicy','Remote OK','Himalayas','The Muse · Jobs','RemoteJobs.org · Jobs','Working Nomads',*ATS_BOARDS]
+
 KEYWORDS=['recruit','talent acquisition','hr','human resources','personal','customer success','customer support','kundenservice','project coordinator','projekt','telecom','fiber','glasfaser','operations','team lead','teamleiter','quality','training','onboarding','account management','dolmetscher','interpreter','translator','german','deutsch','balkan','macedonian','administration','office','property','tourism','logistics','insurance','fintech']
 NEGATIVE=re.compile(r'cold.call|cold.calling|kaltakquise|door.to.door|outbound sales|telemarketing|commission.only|provision.only|doorstep sales',re.I)
 SCAM=re.compile(r'(?:pay|send|transfer|deposit|überweis|bezahlen|zahlung|gebühr).{0,70}(?:application fee|registration fee|training fee|equipment fee|bewerbungsgebühr|einstellungsgebühr|vorab|before (?:you )?start)|(?:application fee|registration fee|training fee|equipment fee|bewerbungsgebühr|einstellungsgebühr).{0,70}(?:pay|transfer|deposit|überweis|bezahlen|zahlung)',re.I)
@@ -85,7 +103,7 @@ def fetch_source(name):
    jobs.append(row(name,title,company,description,'Remote, Standortbedingungen prüfen',link,'',date,link))
  elif name=='Arbeitnow':
   url='https://www.arbeitnow.com/api/job-board-api'
-  for page in range(8):
+  for page in range(15):
    d=get(url)
    for x in d.get('data',[]):jobs.append(row(name,x.get('title'),x.get('company_name'),x.get('description'),x.get('location'),x.get('url'),'',x.get('created_at'),x.get('slug')))
    nxt=d.get('links',{}).get('next') or d.get('next')
@@ -99,16 +117,39 @@ def fetch_source(name):
   for x in d if isinstance(d,list) else []:
    if not isinstance(x,dict):continue
    jobs.append(row(name,x.get('position'),x.get('company'),x.get('description'),x.get('location') or ', '.join(x.get('tags',[])[:5]),x.get('url'),x.get('salary') or '',x.get('date'),x.get('id')))
+ elif name=='The Muse · Jobs':
+  for page in range(1,6):
+   d=get('https://www.themuse.com/api/public/jobs?page='+str(page))
+   for x in d.get('results',[]):
+    loc=', '.join(v.get('name','') for v in x.get('locations',[]) if isinstance(v,dict))
+    company=(x.get('company') or {}).get('name','')
+    jobs.append(row(name,x.get('name'),company,x.get('contents',''),loc,x.get('refs',{}).get('landing_page'),'',x.get('publication_date'),x.get('id')))
+   if page>=d.get('page_count',page):break
+ elif name=='RemoteJobs.org · Jobs':
+  d=get('https://remotejobs.org/api/v1/jobs?limit=100')
+  for x in d.get('data',[]) if isinstance(d,dict) else []:
+   company=x.get('company',{})
+   if isinstance(company,dict):company=company.get('name','')
+   jobs.append(row(name,x.get('title'),company,x.get('description',''),x.get('location',''),x.get('url') or x.get('apply_url'),'',x.get('created_at'),x.get('id')))
+ elif name=='Working Nomads':
+  d=get('https://www.workingnomads.com/api/exposed_jobs/')
+  for x in d if isinstance(d,list) else (d.get('jobs',[]) if isinstance(d,dict) else []):
+   jobs.append(row(name,x.get('title'),x.get('company_name') or x.get('company'),x.get('description',''),x.get('location',''),x.get('url') or x.get('link'),x.get('salary',''),x.get('date',''),x.get('id','')))
  elif name=='Himalayas':
   # API terms: use original applicationLink and display source credit.
-  for offset in (0,20,40,60,80):
-   d=get('https://himalayas.app/jobs/api?limit=20&offset='+str(offset))
+  cursor=None
+  for _ in range(18):
+   endpoint='https://himalayas.app/jobs/api?limit=20'
+   if cursor:endpoint+='&cursor='+urllib.parse.quote(cursor)
+   d=get(endpoint)
    for x in d.get('jobs',[]):
     company=x.get('companyName') or (x.get('company') or {}).get('name','') if isinstance(x.get('company'),dict) else x.get('companyName','')
     loc=', '.join(str(v) for v in (x.get('locationRestrictions') or [])) if isinstance(x.get('locationRestrictions'),list) else str(x.get('locationRestrictions') or '')
-    if x.get('worldwide'):loc+=' worldwide'
+    if x.get('worldwide') or not x.get('locationRestrictions'):loc='Worldwide' if not loc else loc+' worldwide'
     sal=' '.join(str(x.get(k) or '') for k in ('minSalary','maxSalary','currency','salaryPeriod'))
     jobs.append(row(name,x.get('title'),company,x.get('description'),loc,x.get('applicationLink'),sal,x.get('pubDate') or x.get('publishedAt'),x.get('guid')))
+   cursor=d.get('nextCursor')
+   if not cursor:break
  return [j for j in jobs if j]
 # Conservative classification: unknown is not an approval. Check location metadata first.
 # Job suitability must come from the JOB TITLE, never a substring of a company name.
@@ -162,6 +203,9 @@ def classify_work_model(title,location,description):
  if freelance:return 'freelance_unconfirmed'
  return 'unknown'
 
+# Recognize language requirements in all five languages; a country name alone is not proof.
+POLISH_REQUIRED=re.compile(r'(?i)(?:polish|polski|polnisch|psycholog|psychotherapist|psychiatr|psychologe|bankberater|investment banker)')
+OTHER_LANGUAGE_TITLE=re.compile(r'(?i)\\b(?:polish|polski|polnisch|french|français|italian|italiano|spanish|español|dutch|nederlands|swedish|svenska|danish|dansk|norwegian|norsk|finnish|suomi|portuguese|português|japanese|japonais|arabic|arabisch|turkish|türkisch)\\b')
 MK_LOCATION=re.compile(r'\b(?:north macedonia|nordmazedonien|north macedonian|macedonia|mazedonien|skopje|skopje|ohrid|bitola|bitola|tetovo|prilep|kumanovo|struga|gostivar|shtip|stip)\b',re.I)
 MK_REMOTE=re.compile(r'\\b(?:north macedonia|nordmazedonien|macedonia|mazedonien)\\b',re.I)
 
@@ -177,7 +221,7 @@ def assess(j):
  english=bool(ENGLISH.search(full));sales=bool(NEGATIVE.search(full));scam=bool(SCAM.search(full));shift=bool(SHIFT_BAD.search(full))
  work_mode=classify_work_model(title,loc,head)
  remote=work_mode in ('remote','homeoffice','freelance')
- jobfit=not bool(TITLE_BAD.search(title)) # All sectors welcome; specialized exclusions still apply
+ jobfit=not bool(TITLE_BAD.search(title) or POLISH_REQUIRED.search(title) or OTHER_LANGUAGE_TITLE.search(title)) # All sectors welcome; specialized exclusions still apply
  technical=bool(SPECIFIC_BAD.search(title)) or bool(TECH_REQUIREMENT.search(title))
  mk_local=bool(MK_LOCATION.search(loc))
  allowed=mk_local or bool(re.search(r'(?:work|remote|based|located|hire|employ|applicants from).{0,45}(?:north macedonia|nordmazedonien|macedonia|mazedonien|ohrid)',head,re.I))
@@ -229,6 +273,82 @@ def assess(j):
  # Work mode is classified above from explicit evidence.
  return dict(j,fit=score,language='Deutsch ausdrücklich gefordert' if must else ('Deutsch erwünscht' if plus else ('Deutsch erwähnt' if mention else 'Deutsch nicht nachgewiesen')),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties,language_tier=language_tier,balkan_language=balkan,industries=categories,work_mode=('mk_local' if mk_local and not remote else work_mode),location_confirmed=allowed,mk_local=mk_local)
 
+
+# Personalised ranking: eligibility and relevant duties are gates, not small score bonuses.
+ROLE_STRONG=re.compile(r'(?i)(recruit|talent|sourc|personal|human resources|\bhr\b|customer|kunden|support|service|call.?center|help.?desk|telecom|telekommun|glasfaser|fiber|dsl|mobilfunk|project|projekt|coordinat|koordinat|operations|teamlead|teamleiter|back.?office|administration|travel|reise|touris|reserv|booking|translat|übersetz|dolmetsch|interpreter|e.?commerce|amazon|logistik|logistics|immobil|property|office manager|quality|training)')
+ROLE_BLOCK=re.compile(r'(?i)(psycholog|psychiatr|therapist|bankberater|investment bank|financial advisor|software|developer|engineer|architect|nurse|physician|electrician|mechanic|driver|warehouse|forklift|sales executive|sales representative|account executive|business development|cold calling|kaltakquise)')
+LANG_BLOCK=re.compile(r'(?i)\b(polish|polski|polnisch|french|français|spanish|español|italian|italiano|dutch|nederlands|portuguese|português|japanese|japonais|swedish|svenska|danish|dansk|norwegian|norsk|arabic|arabisch)\b')
+HYBRID=re.compile(r'(?i)\b(hybrid|hybride|hybridarbeit|teilweise homeoffice|homeoffice.tage)\b')
+HOME_EXPLICIT=re.compile(r'(?i)(home[ -]?office|homeoffice|work from home|work.from.home|von zuhause|von zu hause|100\s*%\s*homeoffice)')
+REMOTE_EXPLICIT=re.compile(r'(?i)\b(remote|fully remote|work from anywhere|weltweit remote|100\s*%\s*remote)\b')
+ONLY_OTHER=re.compile(r'(?i)\b(?:germany|deutschland|austria|österreich|switzerland|schweiz|poland|polen|france|frankreich|united kingdom|uk|united states|usa|canada|serbia|serbien|croatia|kroatien|bosnia|bosnien)\s*(?:only|exclusively|ausschließlich)\b')
+FLEX_MK=re.compile(r'(?i)(?:remote|homeoffice|work from home|work remotely|work from anywhere).{0,65}(?:north macedonia|nordmazedonien|mazedonien|macedonia|skopje|ohrid)|(?:north macedonia|nordmazedonien|mazedonien|macedonia).{0,65}(?:remote|homeoffice|work from home)')
+FIVE_LANG=re.compile(r'(?i)\b(?:german|deutsch|deutschsprachig|macedonian|mazedonisch|serbian|serbisch|croatian|kroatisch|bosnian|bosnisch)\b')
+def personal_assess(j):
+ j=assess(j)
+ title=j['title'];loc=j['location'];desc=j['description'];head=desc[:3500]
+ mk=bool(MK_LOCATION.search(loc))
+ strong=bool(ROLE_STRONG.search(title))
+ bad=bool(ROLE_BLOCK.search(title) or LANG_BLOCK.search(title))
+ # A job written in English is not automatically an English-language requirement.
+ language=bool(FIVE_LANG.search(title+' '+head[:2500]))
+ # Use explicit job-location metadata. An office in Germany isn't proof of remote eligibility.
+ explicit_remote=bool(REMOTE_EXPLICIT.search(title+' '+loc) or HOME_EXPLICIT.search(title+' '+loc))
+ hybrid=bool(HYBRID.search(title+' '+loc))
+ if hybrid:
+  j['work_mode']='hybrid' if mk else 'hybrid_outside_mk'
+ elif mk and not explicit_remote and j['work_mode']!='freelance':
+  j['work_mode']='mk_local'
+ elif mk and HOME_EXPLICIT.search(title+' '+loc):
+  j['work_mode']='homeoffice'
+ elif mk and REMOTE_EXPLICIT.search(title+' '+loc):
+  j['work_mode']='remote'
+ elif not mk and j['work_mode']=='mk_local':
+  j['work_mode']='unknown'
+ # If only the description says "remote", still display as potential, but no false MK confirmation.
+ remote=j['work_mode'] in ('remote','homeoffice','freelance')
+ location_block=bool(ONLY_OTHER.search(loc) or EXCLUDE.search(loc) or EUROPE_ONLY.search(loc))
+ if location_block and not mk:
+  j['ohrid']='ausgeschlossen'
+  j['location_confirmed']=False
+ elif mk:
+  j['ohrid']='Arbeitsort Nordmazedonien'
+  j['location_confirmed']=True
+ elif FLEX_MK.search(title+' '+loc+' '+head[:1800]):
+  j['ohrid']='Nordmazedonien ausdrücklich bei Remote genannt'
+  j['location_confirmed']=True
+ else:
+  j['location_confirmed']=False
+ # Require role relevance and a known language for the default list.
+ # Local Macedonian positions without stated language remain in reserve, not rejected as impossible.
+ j['excluded']=bool(bad or j['excluded'] or location_block or j['work_mode']=='hybrid_outside_mk')
+ if j['excluded']:j['category']='excluded'
+ elif strong and language and (remote or mk or j['work_mode']=='hybrid'):
+  j['category']='recommended' if j['location_confirmed'] else 'review'
+ else:j['category']='possible'
+ j['relevant_role']=strong
+ j['matching_language']=language
+ j['location_evidence']='Bestätigt in Stellenangabe' if j['location_confirmed'] else ('Ausgeschlossen' if j['ohrid']=='ausgeschlossen' else 'Nicht bestätigt: vor Bewerbung prüfen')
+ j['work_priority']={'homeoffice':6,'remote':5,'freelance':5,'hybrid':4,'mk_local':3}.get(j['work_mode'],0)
+ j['fit']=max(0,min(99,j['fit']+(12 if strong else -20)+(8 if j['location_confirmed'] else 0)))
+ return j
+
+def personal_rank(j):
+ mode=j.get('work_mode','unknown')
+ good=not j['excluded'] and j.get('relevant_role') and j.get('matching_language')
+ eligible=j.get('location_confirmed',False)
+ worldwide=bool(WORLD.search(j.get('location','')))
+ mk=j.get('mk_local',False)
+ # Homeoffice -> remote/freelance -> hybrid in MK -> onsite MK
+ # Confirmed country permission beats unknown remote; unknown remote remains visible after confirmed.
+ tier=(5 if good and eligible and mode=='homeoffice' else
+       4 if good and eligible and mode in ('remote','freelance') else
+       3.5 if good and worldwide and mode in ('homeoffice','remote','freelance') else
+       3 if good and eligible and mode=='hybrid' else
+       2 if good and eligible and mode=='mk_local' else
+       1 if good and mode in ('homeoffice','remote','freelance') else 0)
+ return (tier,j['language_tier']>=2,j['language_tier'],j.get('balkan_language',False),j['fit'],str(j['date']))
+
 def refresh():
  sources={};alljobs=[]
  with ThreadPoolExecutor(max_workers=6) as pool:
@@ -242,8 +362,8 @@ def refresh():
  for j in alljobs:
   key=(j['company'].lower().strip(),j['title'].lower().strip(),j['location'].lower().strip())
   if key in seen:continue
-  seen.add(key);unique.append(assess(j))
- unique.sort(key=lambda j:(not j['excluded'],j['language_tier'],j['balkan_language'],j['fit']),reverse=True)
+  seen.add(key);unique.append(personal_assess(j))
+ unique.sort(key=personal_rank,reverse=True)
  with LOCK:CACHE.update(at=time.time(),jobs=unique,sources=sources)
  return len(unique)
 class Handler(BaseHTTPRequestHandler):
@@ -259,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and (j['language_tier']>=1 or j['balkan_language']) and j['work_mode'] in ('remote','homeoffice','freelance','mk_local') and (TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title']) or j.get('industries'))]
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j.get('relevant_role') and j.get('matching_language') and personal_rank(j)[0]>0]
    elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
@@ -276,14 +396,7 @@ class Handler(BaseHTTPRequestHandler):
    location=q.get('location',['any'])[0]
    if location=='confirmed':jobs=[j for j in jobs if j.get('location_confirmed') and j['ohrid']!='ausgeschlossen']
    elif location=='not_excluded':jobs=[j for j in jobs if j['ohrid']!='ausgeschlossen']
-   jobs.sort(key=lambda j:(
-    not j['excluded'],
-    bool(TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title']) or j.get('industries')),
-    not bool(SPECIFIC_BAD.search(j['title']) or LANGUAGE_OTHER.search(j['title'])),
-    bool(j.get('mk_local') or j.get('location_confirmed')),
-    j['language_tier']>=2 or j['balkan_language'],
-    j['work_mode'] in ('remote','homeoffice','freelance'),
-    j['language_tier'], j['fit'], j['date']),reverse=True)
+   jobs.sort(key=personal_rank,reverse=True)
    page=max(1,min(10000,int(q.get('page',['1'])[0]) if q.get('page',['1'])[0].isdigit() else 1));size=25
    self.respond({'jobs':jobs[(page-1)*size:page*size],'count':len(jobs),'page':page,'pages':max(1,(len(jobs)+size-1)//size),'sources':sources,'last_sync':at});return
   self.respond({'error':'not found'},404)
