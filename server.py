@@ -197,12 +197,12 @@ def assess(j):
  if excluded_location:score=min(score,10)
  if not (allowed or worldwide):score=min(score,55) # Standort ungeklärt: kein Spitzenwert
  if not (TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)):score=min(score,40) # Andere Berufe nicht vor relevante Support/HR-Jobs
- if not language_tier:score=min(score,25)
+ if not language_tier and not balkan:score=min(score,25)
  score=max(0,min(99,score))
  excluded=excluded_location or sales or scam or shift or not jobfit or (not remote and not mk_local) or technical or (bool(LANGUAGE_OTHER.search(full)) and not mention)
  if excluded:category='excluded'
  elif must and (mk_local or allowed or worldwide):category='recommended'
- elif must or plus or mention:category='review'
+ elif must or plus or mention or balkan:category='review'
  else:category='possible'
  status={'recommended':'Deutsch ausdrücklich gesucht · Arbeitsort und Vertrag prüfen',
          'review':'Deutsch in Anzeige erkannt · Arbeitsort prüfen',
@@ -211,7 +211,7 @@ def assess(j):
  duties=next((text for pattern,text in TASK_PATTERNS if re.search(pattern,title,re.I)),
              'Die täglichen Aufgaben sind aus dem Stellentitel nicht zuverlässig ableitbar. Bitte die Originalanzeige prüfen.')
  notes=[]
- if not language_tier:notes.append('Deutsch nicht nachgewiesen')
+ if not language_tier and not balkan:notes.append('Deutsch nicht nachgewiesen')
  elif not must:notes.append('Deutsch nicht ausdrücklich als Pflicht bestätigt')
  if english:notes.append('Gute Englischkenntnisse verlangt, bitte prüfen')
  if not allowed:notes.append('Beschäftigung aus Nordmazedonien nicht bestätigt')
@@ -259,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1 and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and (j['language_tier']>=1 or j['balkan_language']) and j['work_mode'] in ('remote','homeoffice','freelance','mk_local') and (TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title']) or j.get('industries'))]
    elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='review':jobs=[j for j in jobs if j['category']=='review' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
    elif show=='possible':jobs=[j for j in jobs if j['category']=='possible' and j['work_mode'] in ('remote','homeoffice','freelance','mk_local')]
@@ -269,14 +269,21 @@ class Handler(BaseHTTPRequestHandler):
    modes=set(q.get('mode',[]))
    if modes:jobs=[j for j in jobs if j.get('work_mode') in modes]
    langs=set(q.get('language',[]))
-   if langs:jobs=[j for j in jobs if str(j['language_tier']) in langs]
+   if langs:jobs=[j for j in jobs if str(j['language_tier']) in langs or (j['balkan_language'] and 'balkan' in langs)]
    if q.get('balkan',['0'])[0]=='1':jobs=[j for j in jobs if j['balkan_language']]
    if q.get('salary',['0'])[0]=='1':jobs=[j for j in jobs if j.get('salary','').strip()]
    if q.get('english',['any'])[0]=='not_required':jobs=[j for j in jobs if j['english']!='Englischpflicht erkannt']
    location=q.get('location',['any'])[0]
    if location=='confirmed':jobs=[j for j in jobs if j.get('location_confirmed') and j['ohrid']!='ausgeschlossen']
    elif location=='not_excluded':jobs=[j for j in jobs if j['ohrid']!='ausgeschlossen']
-   jobs.sort(key=lambda j:(not j['excluded'], j['language_tier']>=2, j['language_tier'], bool(j.get('mk_local') or j.get('location_confirmed')), bool(TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title'])), j['work_mode'] in ('remote','homeoffice','freelance'),j['fit'],j['date']),reverse=True)
+   jobs.sort(key=lambda j:(
+    not j['excluded'],
+    bool(TITLE_GOOD.search(j['title']) or SERVICE_TITLE.search(j['title']) or j.get('industries')),
+    not bool(SPECIFIC_BAD.search(j['title']) or LANGUAGE_OTHER.search(j['title'])),
+    bool(j.get('mk_local') or j.get('location_confirmed')),
+    j['language_tier']>=2 or j['balkan_language'],
+    j['work_mode'] in ('remote','homeoffice','freelance'),
+    j['language_tier'], j['fit'], j['date']),reverse=True)
    page=max(1,min(10000,int(q.get('page',['1'])[0]) if q.get('page',['1'])[0].isdigit() else 1));size=25
    self.respond({'jobs':jobs[(page-1)*size:page*size],'count':len(jobs),'page':page,'pages':max(1,(len(jobs)+size-1)//size),'sources':sources,'last_sync':at});return
   self.respond({'error':'not found'},404)
