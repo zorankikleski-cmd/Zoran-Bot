@@ -18,7 +18,7 @@ ATS_BOARDS={
  'Ashby · Deel':('ashby','deel','Deel'),
  'Ashby · Linear':('ashby','linear','Linear'),
 }
-SOURCE_NAMES=['Remotive','Arbeitnow','Jobicy','Remote OK','Himalayas',*ATS_BOARDS]
+SOURCE_NAMES=['Remotive','Remotive · German','Remotive · Customer Support','Remotive · Recruiting','Remotive · Balkan','Arbeitnow','Jobicy','Remote OK','Himalayas',*ATS_BOARDS]
 KEYWORDS=['recruit','talent acquisition','hr','human resources','personal','customer success','customer support','kundenservice','project coordinator','projekt','telecom','fiber','glasfaser','operations','team lead','teamleiter','quality','training','onboarding','account management','dolmetscher','interpreter','translator','german','deutsch','balkan','macedonian','administration','office','property','tourism','logistics','insurance','fintech']
 NEGATIVE=re.compile(r'cold.call|cold.calling|kaltakquise|door.to.door|outbound sales|telemarketing|commission.only|provision.only|doorstep sales',re.I)
 SCAM=re.compile(r'(?:pay|send|transfer|deposit|überweis|bezahlen|zahlung|gebühr).{0,70}(?:application fee|registration fee|training fee|equipment fee|bewerbungsgebühr|einstellungsgebühr|vorab|before (?:you )?start)|(?:application fee|registration fee|training fee|equipment fee|bewerbungsgebühr|einstellungsgebühr).{0,70}(?:pay|transfer|deposit|überweis|bezahlen|zahlung)',re.I)
@@ -58,12 +58,15 @@ def fetch_source(name):
    for x in d.get('jobs',[]):
     if x.get('isListed') is False:continue
     jobs.append(row(name,x.get('title'),company,x.get('descriptionPlain') or x.get('descriptionHtml') or '',x.get('location',''),x.get('jobUrl') or x.get('applyUrl'),(x.get('compensation') or {}).get('compensationTierSummary','') if isinstance(x.get('compensation'),dict) else '',x.get('publishedAt'),x.get('id')))
- elif name=='Remotive':
-  d=get('https://remotive.com/api/remote-jobs?limit=500')
+ elif name.startswith('Remotive'):
+  term={'Remotive · German':'german','Remotive · Customer Support':'customer support','Remotive · Recruiting':'recruiter','Remotive · Balkan':'macedonian'}.get(name)
+  endpoint='https://remotive.com/api/remote-jobs?limit=500'
+  if term:endpoint+='&search='+urllib.parse.quote(term)
+  d=get(endpoint)
   for x in d.get('jobs',[]):jobs.append(row(name,x.get('title'),x.get('company_name'),x.get('description'),x.get('candidate_required_location'),x.get('url'),x.get('salary'),x.get('publication_date'),x.get('id')))
  elif name=='Arbeitnow':
   url='https://www.arbeitnow.com/api/job-board-api'
-  for page in range(3):
+  for page in range(8):
    d=get(url)
    for x in d.get('data',[]):jobs.append(row(name,x.get('title'),x.get('company_name'),x.get('description'),x.get('location'),x.get('url'),'',x.get('created_at'),x.get('slug')))
    nxt=d.get('links',{}).get('next') or d.get('next')
@@ -112,47 +115,60 @@ TASK_PATTERNS=[
  (r'immobil|property','Kunden und Objekte betreuen, Termine organisieren und Anfragen bearbeiten.'),
  (r'touris|travel','Reiseanfragen bearbeiten, Buchungen und Abläufe koordinieren und Kunden betreuen.'),
 ]
+# Language evidence is a hard priority. Do not infer a German-speaking role from
+# the employer's location or a stray country name in the description.
+GERMAN_MUST=re.compile(r'(?:german[ -]speaking|german[ -]language|deutschsprachig|deutschkenntnisse|deutsche sprache|german fluency|fluent (?:in )?german|native (?:level )?german|german (?:required|mandatory|essential|speaker|c1|c2|b2)|deutsch (?:c1|c2|b2|erforderlich|fließend|muttersprache)|(?:german|deutsch).{0,30}(?:required|mandatory|essential|erforderlich|voraussetzung|c1|c2|b2))',re.I)
+GERMAN_PLUS=re.compile(r'(?:german|deutsch).{0,45}(?:preferred|nice to have|plus|advantage|von vorteil|wünschenswert)|(?:preferred|nice to have|plus|advantage|von vorteil|wünschenswert).{0,45}(?:german|deutsch)',re.I)
+BALKAN_LANGUAGE=re.compile(r'\b(?:macedonian|mazedonisch|serbian|serbisch|croatian|kroatisch|bosnian|bosnisch|bcs|bcs[ -]language|serbo[ -]croatian)\b',re.I)
+SERVICE_TITLE=re.compile(r'(?:customer|kunden|client|service|support|care|call[ -]?cent(?:er|re)|contact cent(?:er|re)|reise|travel|touris|booking|reserv|telecom|telekommun|mobilfunk|dsl|glasfaser|recruit|talent|personal|human resources|\bhr\b|teamlead|teamleiter|coordinator|koordinator|back[ -]?office|operations|projekt|project|interpreter|translator|dolmetsch|sprachmittl|amazon|logistics|logistik)',re.I)
+SPECIFIC_BAD=re.compile(r'(?:\b(?:engineer|architect|developer|programmer|software|data scientist|machine learning|\bpython\b|\bsql\b|\bjava\b|\breact\b|\bcybersecurity\b|\bphysician\b|\bnurse\b|psycholog|psychologu|\bfrancophone\b|\(fr\)|\(jp\))\b)',re.I)
+US_STATE=re.compile(r'\b(?:usa|united states|us only|u\.?s\.? residents|dallas|texas|seattle|washington|ohio|california|new york|florida|chicago|boston|japan|tokyo|france|paris|australia|singapore|canada|mexico|india|philippines)\b',re.I)
+LANGUAGE_OTHER=re.compile(r'(?:french|français|japanese|japonais|spanish|italian|portuguese|dutch|polish|arabic|mandarin).{0,30}(?:required|fluent|native|mandatory|c1|c2)',re.I)
+
 def assess(j):
- title=j['title'];desc=j['description'];loc=j['location'];head=desc[:5000]
+ title=j['title'];desc=j['description'];loc=j['location'];head=desc[:6000]
  full=title+' '+head
- german=bool(GERMAN.search(full));german_required=bool(GERMAN_REQUIRED.search(full))
+ # Explicit German requirement > German preferred > German mentioned > no proof.
+ must=bool(GERMAN_MUST.search(full))
+ plus=bool(GERMAN_PLUS.search(full)) and not must
+ mention=bool(GERMAN.search(title)) or bool(re.search(r'\b(?:german|deutsch)\b',head[:2500],re.I))
+ language_tier=3 if must else (2 if plus else (1 if mention else 0))
+ balkan=bool(BALKAN_LANGUAGE.search(full))
  english=bool(ENGLISH.search(full));sales=bool(NEGATIVE.search(full));scam=bool(SCAM.search(full));shift=bool(SHIFT_BAD.search(full))
- # A remote job board alone is not evidence that every job is remote.
  remote=bool(REMOTE.search(title+' '+loc+' '+head[:1200]))
- jobfit=bool(TITLE_GOOD.search(title)) and not bool(TITLE_BAD.search(title))
- technical=bool(TECH_REQUIREMENT.search(title)) or (bool(re.search(r'\b(?:engineer|architect|developer|data|technical)\b',title,re.I)) and bool(TECH_REQUIREMENT.search(head)))
+ jobfit=bool(TITLE_GOOD.search(title) or SERVICE_TITLE.search(title)) and not bool(TITLE_BAD.search(title))
+ technical=bool(SPECIFIC_BAD.search(title)) or bool(TECH_REQUIREMENT.search(title))
  allowed=bool(ALLOW.search(loc)) or bool(re.search(r'(?:work|remote|based|located|hire|employ).{0,45}(?:north macedonia|nordmazedonien|ohrid)',head,re.I))
  worldwide=bool(WORLD.search(loc)) or bool(re.search(r'(?:eligible|hiring|work|remote|location).{0,45}(?:worldwide|anywhere in the world|globally)',head[:1500],re.I))
- restricted=bool(EXCLUDE.search(loc+' '+head[:1500])) or bool(EUROPE_ONLY.search(loc+' '+head[:1500]))
- region=bool(REGION_LIMIT.search(loc) or COUNTRY_SCOPE.search(loc)) and not allowed and not worldwide
+ restricted=bool(EXCLUDE.search(loc+' '+head[:1200])) or bool(EUROPE_ONLY.search(loc+' '+head[:1200]))
+ # Location metadata is stronger than marketing text saying 'global company'.
+ region=bool(REGION_LIMIT.search(loc) or COUNTRY_SCOPE.search(loc) or US_STATE.search(loc)) and not allowed and not worldwide
  excluded_location=restricted or region
  ohrid='ausgeschlossen' if excluded_location else ('Nordmazedonien genannt, Freigabe prüfen' if allowed else ('Weltweit ausgeschrieben, Freigabe prüfen' if worldwide else 'ungeklärt'))
- # Evidence-based ranking, not an application-success probability.
- score=10+(27 if jobfit else 0)+(23 if german_required else (14 if german else 0))+(15 if remote else 0)+(15 if allowed else (9 if worldwide else 0))
- if english:score-=14
- if sales:score-=28
- if shift:score-=12
- if not remote:score-=22
+ score=10+(30 if jobfit else 0)+(35 if must else (24 if plus else (10 if mention else 0)))+(8 if balkan else 0)+(10 if remote else 0)+(8 if allowed else (4 if worldwide else 0))
+ if english:score-=12
+ if sales:score-=30
+ if shift:score-=15
+ if not remote:score-=30
  if not jobfit:score-=35
- if technical:score-=28
+ if technical:score-=40
  if excluded_location:score=min(score,10)
- if not german:score=min(score,35)
- if technical:score=min(score,15)
- score=max(0,min(95,score))
- excluded=excluded_location or sales or scam or shift or not jobfit or not remote or technical
- # Three useful groups: confirmed geography, strong potential, and language still to check.
+ if not mention:score=min(score,35)
+ score=max(0,min(99,score))
+ excluded=excluded_location or sales or scam or shift or not jobfit or not remote or technical or (bool(LANGUAGE_OTHER.search(full)) and not mention)
  if excluded:category='excluded'
- elif german and (allowed or worldwide):category='recommended'
- elif german:category='review'
+ elif must and (allowed or worldwide):category='recommended'
+ elif must or plus or mention:category='review'
  else:category='possible'
- status={'recommended':'Fachlich passend · Standortfreigabe vor Bewerbung bestätigen',
-         'review':'Interessant · Homeoffice aus Ohrid beim Arbeitgeber klären',
-         'possible':'Nur zur weiteren Prüfung · Deutsch und Ohrid nicht bestätigt',
+ status={'recommended':'Deutsch ausdrücklich gesucht · Ohrid-Vertrag prüfen',
+         'review':'Deutsch in Anzeige erkannt · Ohrid noch klären',
+         'possible':'Sprache nicht belegt · nur als Reserve prüfen',
          'excluded':'Nicht für deine normale Suche empfohlen'}[category]
  duties=next((text for pattern,text in TASK_PATTERNS if re.search(pattern,title,re.I)),
              'Die täglichen Aufgaben sind aus dem Stellentitel nicht zuverlässig ableitbar. Bitte die Originalanzeige prüfen.')
  notes=[]
- if not german:notes.append('Deutsch nicht nachgewiesen')
+ if not mention:notes.append('Deutsch nicht nachgewiesen')
+ elif not must:notes.append('Deutsch nicht ausdrücklich als Pflicht bestätigt')
  if english:notes.append('Gute Englischkenntnisse verlangt, bitte prüfen')
  if not allowed:notes.append('Beschäftigung aus Nordmazedonien nicht bestätigt')
  if excluded_location:notes.append('Ausgeschriebene Region passt nicht zu Ohrid')
@@ -162,7 +178,7 @@ def assess(j):
  if not remote:notes.append('Homeoffice/Remote nicht nachgewiesen')
  if not jobfit:notes.append('Berufsprofil passt nicht')
  if technical:notes.append('Technische Spezialkenntnisse erforderlich oder wahrscheinlich')
- return dict(j,fit=score,language='Deutsch gefordert' if german_required else ('Deutsch erwähnt' if german else 'Deutsch nicht nachgewiesen'),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties)
+ return dict(j,fit=score,language='Deutsch ausdrücklich gefordert' if must else ('Deutsch erwünscht' if plus else ('Deutsch erwähnt' if mention else 'Deutsch nicht nachgewiesen')),english='Englischpflicht erkannt' if english else 'Englischpflicht nicht belegt',ohrid=ohrid,scam='kritischer Warnhinweis' if scam else 'Arbeitgeber nicht unabhängig verifiziert',excluded=excluded,category=category,status=status,notes=notes,duties=duties,language_tier=language_tier,balkan_language=balkan)
 
 def refresh():
  sources={};alljobs=[]
@@ -178,7 +194,7 @@ def refresh():
   key=(j['company'].lower().strip(),j['title'].lower().strip(),j['location'].lower().strip())
   if key in seen:continue
   seen.add(key);unique.append(assess(j))
- unique.sort(key=lambda j:({'recommended':3,'review':2,'possible':1,'excluded':0}[j['category']],j['fit']),reverse=True)
+ unique.sort(key=lambda j:(not j['excluded'],j['language_tier'],j['balkan_language'],j['fit']),reverse=True)
  with LOCK:CACHE.update(at=time.time(),jobs=unique,sources=sources)
  return len(unique)
 class Handler(BaseHTTPRequestHandler):
@@ -194,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
    with LOCK:jobs=list(CACHE['jobs']);sources=dict(CACHE['sources']);at=CACHE['at']
    query=(q.get('q',[''])[0] or '').lower().strip();show=q.get('show',['recommended'])[0]
    if query:jobs=[j for j in jobs if query in (' '.join((j['title'],j['company'],j['description']))).lower()]
-   if show=='recommended':jobs=[j for j in jobs if j['category']!='excluded']
+   if show=='recommended':jobs=[j for j in jobs if not j['excluded'] and j['language_tier']>=1]
    elif show=='confirmed':jobs=[j for j in jobs if j['category']=='recommended']
    elif show=='review':jobs=[j for j in jobs if j['category']=='review']
    elif show=='possible':jobs=[j for j in jobs if j['category']=='possible']
