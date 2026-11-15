@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY server.py index.html ./
+COPY server.py matching.py local_sources.py index.html ./
 ENV PORT=8080 PYTHONUNBUFFERED=1
 EXPOSE 8080
 CMD ["python", "server.py"]

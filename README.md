@@ -1,21 +1,19 @@
-# Balkan Remote Career Meister 7.0
+# Balkan Remote Career Meister 8.0
 
-**Online-bereitstellbare Webanwendung, noch nicht veröffentlicht.**
+Lokal mit `python server.py` starten und `http://127.0.0.1:8765` öffnen. Der Server verwendet Python 3.12 und Standardbibliotheken. Der Docker-Start für Render ist im Repository enthalten.
 
-## Start
+## Treffer und Filter
 
-Lokal: `python server.py` und `http://localhost:8765` öffnen. Für iPhone und Laptop dieselbe öffentlich gehostete URL verwenden.
+Die Startliste verlangt eine passende Tätigkeit, einen Sprachhinweis und eine Ortsangabe für Nordmazedonien. Explizite Anforderungen an Deutsch, Mazedonisch, Serbisch, Kroatisch und Bosnisch sowie mazedonischsprachige lokale Anzeigen werden mit ihrem jeweiligen Nachweis ausgewiesen. Höhere Englischpflicht, weitere Pflichtsprachen, unpassende Tätigkeiten und ausgeschlossene Arbeitsorte fallen aus der Startliste.
 
-Online: Repository auf GitHub hochladen, bei Render ein neues Web Service aus dem Repository erstellen und die mitgelieferte `render.yaml` nutzen. Der Anbieter erstellt die Internetadresse. Kostenloses Hosting kann schlafen oder Limits haben. Keine persönlichen CVs in das Repository hochladen.
+Die Rangfolge berücksichtigt Sprachbeleg, Tätigkeit, Ortsangabe, Arbeitsmodell und Datum. Die Karte zeigt die Teilpunkte und den Standortbeleg. Weltweite, regionale und unklare Remote-Angebote sind bei ansonsten passendem Profil unter „Passend, Arbeitsort offen“ zu finden. Innerhalb einer Filtergruppe werden Auswahlen mit ODER verbunden, zwischen Gruppen mit UND.
 
 ## Quellen
 
-Fünf allgemeine Jobfeeds: Remotive, Arbeitnow, Jobicy, Remote OK, Himalayas. Sieben firmenspezifische ATS-Feeds: Greenhouse (GitLab, Automattic, Remote), Lever (Canonical, Wikimedia), Ashby (Deel, Linear). Nicht alle Firmenboards müssen noch existieren oder Stellen liefern. Bei jedem Suchlauf werden Erfolg, Fehler und Anzahl pro Quelle angezeigt. Zusätzlich 31 externe Jobplattform-Links. Die Links werden **nicht** automatisch durchsucht.
+Die quellenweise Statusanzeige unterscheidet erreichbare, teilweise erreichbare, ausgefallene und vorübergehend zwischengespeicherte Quellen. Neben allgemeinen Jobfeeds und Firmenboards werden Vrabotuvanje MK, KARIERA.mk, der Workable-Feed von SupportYourApp und eine Jobicy-Sprachsuche ausgewertet. Lokale Anzeigen werden anhand ihrer Detailseiten und Bewerbungsfristen geprüft. Die Quellen starten beim Serverstart und werden alle 30 Minuten aktualisiert. Bei Ausfällen kann ein zuvor erfolgreicher Abruf bis zu zwei Stunden im RAM erhalten bleiben. Abgelaufene Anzeigen werden auch zwischen Abrufen ausgefiltert.
 
-## Grenzen und Sicherheit
-
-Kein Zugang zu sämtlichen LinkedIn-, Indeed- oder StepStone-Stellen. Kein garantierter Live-Treffer. Firmenidentität und rechtliche Arbeit aus Ohrid bleiben ungeprüft. Lebenslauf wird nur im Browser ausgewählt und **nicht** hochgeladen. Bewerbung wird nur vorbereitet, nie automatisch versandt. Die Suchdaten werden im Server-RAM zwischengespeichert (15 Minuten); Neustart leert den Cache. Es gibt kein Nutzerkonto und keine geräteübergreifende CV-Synchronisierung. Kein persönliches Dokument in ein öffentliches GitHub-Repository hochladen. Für echte Accounts, CV-Cloudspeicherung und automatische Bewerbungen wären zusätzliche Sicherheitsmaßnahmen erforderlich.
+Die Auswertung basiert auf veröffentlichten Angaben. Sie kann zusätzliche Anforderungen, Bildanzeigen oder mehrdeutige Ortsangaben übersehen. Eine weltweite Ausschreibung ersetzt keine Aussage des Arbeitgebers zum Vertrag in Nordmazedonien. Die Datenquellen und Suchseiten haben begrenzte Abdeckung. Externe Jobplattformen unter „Weitere Jobplattformen“ sind Direktlinks. Lebensläufe bleiben lokal im Browser und Bewerbungen werden als Entwurf vorbereitet.
 
 ## Tests
 
-`python -m unittest -v test_server.py test_extra.py`
+`python -m unittest -v`

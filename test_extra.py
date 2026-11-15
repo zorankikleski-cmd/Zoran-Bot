@@ -1,7 +1,7 @@
 import unittest,unittest.mock as mock
 import server
 class AdditionalTests(unittest.TestCase):
- def test_twelve_sources(self):self.assertEqual(len(server.SOURCE_NAMES),12)
+ def test_unique_source_names(self):self.assertEqual(len(set(server.SOURCE_NAMES)),len(server.SOURCE_NAMES))
  def test_ats_adapters(self):
   fixture={'greenhouse':{'jobs':[{'title':'German Recruiter','location':{'name':'Remote'},'absolute_url':'https://example.org/job'}]},'lever':[{'text':'German Recruiter','categories':{'location':'Remote'},'hostedUrl':'https://example.org/job'}],'ashby':{'jobs':[{'title':'German Recruiter','location':'Remote','jobUrl':'https://example.org/job'}]}}
   for name,(kind,_,_) in server.ATS_BOARDS.items():
